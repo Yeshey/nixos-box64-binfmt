@@ -2,83 +2,60 @@
   description = "Box64 Binfmt NixOS Module";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = { self, nixpkgs, ... }@inputs: let
-    lib = nixpkgs.lib;
-    supportedSystems = [ "aarch64-linux" "riscv64-linux" ];
-    eachSystem = f: lib.genAttrs supportedSystems (system: f system);
-    
-    # Package sets for supported systems
-    pkgsFor = system: import nixpkgs {
-      inherit system;
-      config.allowUnfree = true;
-    };
-    
-    overlay = final: prev: {
-      x86 = import nixpkgs {
-        system = "x86_64-linux";
-        config.allowUnfree = true;
-        config.allowUnsupportedSystem = true;
-        # overlays = [
-        #   (self: super: {
-        #     mesa = super.mesa.override {
-        #       # vulkanDrivers = [ "swrast" ];
-        #       # swarast gave ERROR: Feature gallium-vdpau cannot be enabled: VDPAU state tracker requires at least one of the following gallium drivers: r600, radeonsi, nouveau, d3d12 (with option gallium-d3d12-video, virgl).
-        #       # galliumDrivers = [ "llvmpipe" "softpipe" "nouveau" "virgl" ];
+  outputs = inputs@{ flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "aarch64-linux" "riscv64-linux" ];
 
-        #       vulkanDrivers = [
-        #         "amd" # AMD (aka RADV)
-        #         "intel" # new Intel (aka ANV)
-        #         "microsoft-experimental" # WSL virtualized GPU (aka DZN/Dozen)
-        #         "nouveau" # Nouveau (aka NVK)
-        #         "swrast" # software renderer (aka Lavapipe)
-        #       ];
+      # ---------------------------------------------------------------------------
+      # Flake-level outputs (not per-system)
+      # ---------------------------------------------------------------------------
+      flake = {
+        # Overlay that adds pkgs.x86 — a full x86_64 package set usable from an
+        # aarch64 host.  Useful for installing x86 packages in your configuration.
+        overlays.default = final: prev: {
+          x86 = import inputs.nixpkgs {
+            system = "x86_64-linux";
+            config.allowUnfree = true;
+            config.allowUnsupportedSystem = true;
+          };
+        };
 
-        #       # https://nixos.wiki/wiki/Mesa
-        #       # and
-        #       # https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/libraries/mesa/default.nix
-        #       galliumDrivers =     [
-        #         "d3d12" # WSL emulated GPU (aka Dozen)
-        #         "iris" # new Intel (Broadwell+)
-        #         "llvmpipe" # software renderer
-        #         "nouveau" # Nvidia
-        #         "r300" # very old AMD
-        #         "r600" # less old AMD
-        #         "radeonsi" # new AMD (GCN+)
-        #         "softpipe" # older software renderer
-        #         "svga" # VMWare virtualized GPU
-        #         "virgl" # QEMU virtualized GPU (aka VirGL)
-        #         "zink" # generic OpenGL over Vulkan, experimental
-        #       ];
-        #     };
-        #   })
-        # ];
+        # Classic NixOS module consumed via nixosModules.default.
+        nixosModules.default = import ./modules/nixos {
+          inherit inputs;
+          self = inputs.self;
+        };
+
+        # flake-parts module: exposes the NixOS module under
+        # flake.modules.nixos.box64-binfmt so dendritic-style configs can
+        # import it with a single `imports` line.
+        flakeModules.default = { ... }: {
+          flake.modules.nixos.box64-binfmt = import ./modules/nixos {
+            inherit inputs;
+            self = inputs.self;
+          };
+        };
+      };
+
+      # ---------------------------------------------------------------------------
+      # Per-system outputs
+      # ---------------------------------------------------------------------------
+      perSystem = { pkgs, system, ... }: let
+        mkBox32 = pkgs.callPackage ./pkgs/box32.nix {
+          hello-x86_64 =
+            if pkgs.stdenv.hostPlatform.isx86_64
+            then pkgs.hello
+            else pkgs.pkgsCross.gnu64.hello;
+        };
+      in {
+        packages = {
+          default = mkBox32;
+          box32   = mkBox32;
+        };
       };
     };
-
-
-
-  in {
-    packages = eachSystem (system: {
-      default = self.packages.${system}.box64-bleeding-edge;
-      box64-bleeding-edge = (pkgsFor system).callPackage ./box64-bleeding-edge.nix {
-        hello-x86_64 = if (pkgsFor system).stdenv.hostPlatform.isx86_64 then
-          (pkgsFor system).hello
-        else
-          (pkgsFor system).pkgsCross.gnu64.hello;
-      };
-    });
-
-    overlays = {
-      default = overlay;
-    };
-
-    nixosModules.default = import ./default.nix {
-      inherit inputs;
-      self = self; # Required for accessing packages in default.nix
-    };
-  };
 }
