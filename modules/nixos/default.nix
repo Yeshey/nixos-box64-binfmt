@@ -6,7 +6,7 @@ let
   cfg   = config.box64-binfmt;
   box32 = inputs.self.packages.${system}.box32;
 
-  # STRICTLY CURATED: Only libraries Box64 has explicit C-wrappers for.
+  # libraries Box64 has explicit C-wrappers for, see https://github.com/ptitSeb/box64/tree/main/src/wrapped
   nativeBox64Libs = with pkgs; [
     alsa-lib libpulseaudio libsndfile openal
     SDL2 SDL2_image SDL2_mixer SDL2_ttf SDL2_net
@@ -17,9 +17,6 @@ let
     fontconfig freetype
   ];
 
-  # The Magic Binfmt Wrapper!
-  # This intercepts ALL x86 executions on your system and natively injects
-  # the Aarch64 hardware boundaries into the path before Box64 boots.
   box64Wrapper = pkgs.writeShellScript "box64-wrapper" ''
     export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeBox64Libs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     exec ${box32}/bin/box64 "$@"
