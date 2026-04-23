@@ -1,132 +1,132 @@
-name: Update box32 package
+# name: Update box32 package
 
-on:
-  schedule:
-    # Run every day at 06:00 UTC
-    - cron: "0 6 * * *"
-  workflow_dispatch: {}
+# on:
+#   schedule:
+#     # Run every day at 06:00 UTC
+#     - cron: "0 6 * * *"
+#   workflow_dispatch: {}
 
-permissions:
-  contents: write
-  pull-requests: write
+# permissions:
+#   contents: write
+#   pull-requests: write
 
-jobs:
-  update:
-    runs-on: ubuntu-latest
+# jobs:
+#   update:
+#     runs-on: ubuntu-latest
 
-    steps:
-      # -----------------------------------------------------------------------
-      # 1. Checkout
-      # -----------------------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#     steps:
+#       # -----------------------------------------------------------------------
+#       # 1. Checkout
+#       # -----------------------------------------------------------------------
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      # -----------------------------------------------------------------------
-      # 2. Fetch the latest box64 release tag and resolve its commit SHA
-      # -----------------------------------------------------------------------
-      - name: Get latest box64 release info
-        id: release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          LATEST_TAG=$(gh api repos/ptitSeb/box64/releases/latest --jq '.tag_name')
-          echo "tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+#       # -----------------------------------------------------------------------
+#       # 2. Fetch the latest box64 release tag and resolve its commit SHA
+#       # -----------------------------------------------------------------------
+#       - name: Get latest box64 release info
+#         id: release
+#         env:
+#           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         run: |
+#           LATEST_TAG=$(gh api repos/ptitSeb/box64/releases/latest --jq '.tag_name')
+#           echo "tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
 
-          COMMIT=$(gh api "repos/ptitSeb/box64/git/refs/tags/${LATEST_TAG}" \
-            --jq '.object.sha // empty')
+#           COMMIT=$(gh api "repos/ptitSeb/box64/git/refs/tags/${LATEST_TAG}" \
+#             --jq '.object.sha // empty')
 
-          # Tags may point to a tag object rather than directly to a commit.
-          if [ -z "$COMMIT" ]; then
-            COMMIT=$(gh api "repos/ptitSeb/box64/git/tags/$(gh api "repos/ptitSeb/box64/git/refs/tags/${LATEST_TAG}" --jq '.object.sha')" \
-              --jq '.object.sha')
-          fi
+#           # Tags may point to a tag object rather than directly to a commit.
+#           if [ -z "$COMMIT" ]; then
+#             COMMIT=$(gh api "repos/ptitSeb/box64/git/tags/$(gh api "repos/ptitSeb/box64/git/refs/tags/${LATEST_TAG}" --jq '.object.sha')" \
+#               --jq '.object.sha')
+#           fi
 
-          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+#           echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
 
-      # -----------------------------------------------------------------------
-      # 3. Compare with the commit currently recorded in pkgs/box32.nix
-      # -----------------------------------------------------------------------
-      - name: Check whether an update is needed
-        id: check
-        run: |
-          CURRENT=$(grep -oP '(?<=version = ")[^"]+' pkgs/box32.nix | head -1)
-          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
-          if [ "$CURRENT" = "${{ steps.release.outputs.commit }}" ]; then
-            echo "needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "needed=true" >> "$GITHUB_OUTPUT"
-          fi
+#       # -----------------------------------------------------------------------
+#       # 3. Compare with the commit currently recorded in pkgs/box32.nix
+#       # -----------------------------------------------------------------------
+#       - name: Check whether an update is needed
+#         id: check
+#         run: |
+#           CURRENT=$(grep -oP '(?<=version = ")[^"]+' pkgs/box32.nix | head -1)
+#           echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+#           if [ "$CURRENT" = "${{ steps.release.outputs.commit }}" ]; then
+#             echo "needed=false" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "needed=true" >> "$GITHUB_OUTPUT"
+#           fi
 
-      # -----------------------------------------------------------------------
-      # 4. Install Nix (only when an update is needed)
-      # -----------------------------------------------------------------------
-      - name: Install Nix
-        if: steps.check.outputs.needed == 'true'
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
+#       # -----------------------------------------------------------------------
+#       # 4. Install Nix (only when an update is needed)
+#       # -----------------------------------------------------------------------
+#       - name: Install Nix
+#         if: steps.check.outputs.needed == 'true'
+#         uses: cachix/install-nix-action@v27
+#         with:
+#           nix_path: nixpkgs=channel:nixos-unstable
+#           extra_nix_config: |
+#             experimental-features = nix-command flakes
 
-      # -----------------------------------------------------------------------
-      # 5. Compute the new fetchFromGitHub hash
-      # -----------------------------------------------------------------------
-      - name: Compute new hash
-        if: steps.check.outputs.needed == 'true'
-        id: hash
-        run: |
-          NEW_COMMIT="${{ steps.release.outputs.commit }}"
-          # nix-prefetch-github prints JSON; extract the "hash" field (SRI format).
-          HASH=$(nix run nixpkgs#nix-prefetch-github -- \
-            ptitSeb box64 \
-            --rev "$NEW_COMMIT" \
-            --fetch-submodules false \
-            2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])")
-          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+#       # -----------------------------------------------------------------------
+#       # 5. Compute the new fetchFromGitHub hash
+#       # -----------------------------------------------------------------------
+#       - name: Compute new hash
+#         if: steps.check.outputs.needed == 'true'
+#         id: hash
+#         run: |
+#           NEW_COMMIT="${{ steps.release.outputs.commit }}"
+#           # nix-prefetch-github prints JSON; extract the "hash" field (SRI format).
+#           HASH=$(nix run nixpkgs#nix-prefetch-github -- \
+#             ptitSeb box64 \
+#             --rev "$NEW_COMMIT" \
+#             --fetch-submodules false \
+#             2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])")
+#           echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
 
-      # -----------------------------------------------------------------------
-      # 6. Patch pkgs/box32.nix in-place
-      # -----------------------------------------------------------------------
-      - name: Update pkgs/box32.nix
-        if: steps.check.outputs.needed == 'true'
-        run: |
-          NEW_COMMIT="${{ steps.release.outputs.commit }}"
-          NEW_HASH="${{ steps.hash.outputs.hash }}"
-          OLD_COMMIT="${{ steps.check.outputs.current }}"
+#       # -----------------------------------------------------------------------
+#       # 6. Patch pkgs/box32.nix in-place
+#       # -----------------------------------------------------------------------
+#       - name: Update pkgs/box32.nix
+#         if: steps.check.outputs.needed == 'true'
+#         run: |
+#           NEW_COMMIT="${{ steps.release.outputs.commit }}"
+#           NEW_HASH="${{ steps.hash.outputs.hash }}"
+#           OLD_COMMIT="${{ steps.check.outputs.current }}"
 
-          # Replace the version (commit SHA) line.
-          sed -i "s|version = \"${OLD_COMMIT}\";|version = \"${NEW_COMMIT}\";|" pkgs/box32.nix
+#           # Replace the version (commit SHA) line.
+#           sed -i "s|version = \"${OLD_COMMIT}\";|version = \"${NEW_COMMIT}\";|" pkgs/box32.nix
 
-          # Replace the hash line (handles both the placeholder and a real hash).
-          # The hash line always follows the pattern:  hash = "sha256-...";
-          sed -i -E "s|hash = \"sha256-[^\"]+\";|hash = \"${NEW_HASH}\";|" pkgs/box32.nix
+#           # Replace the hash line (handles both the placeholder and a real hash).
+#           # The hash line always follows the pattern:  hash = "sha256-...";
+#           sed -i -E "s|hash = \"sha256-[^\"]+\";|hash = \"${NEW_HASH}\";|" pkgs/box32.nix
 
-      # -----------------------------------------------------------------------
-      # 7. Verify the derivation evaluates cleanly
-      # -----------------------------------------------------------------------
-      - name: Nix evaluate check
-        if: steps.check.outputs.needed == 'true'
-        run: |
-          nix eval .#packages.aarch64-linux.box32.name --no-warn-dirty
+#       # -----------------------------------------------------------------------
+#       # 7. Verify the derivation evaluates cleanly
+#       # -----------------------------------------------------------------------
+#       - name: Nix evaluate check
+#         if: steps.check.outputs.needed == 'true'
+#         run: |
+#           nix eval .#packages.aarch64-linux.box32.name --no-warn-dirty
 
-      # -----------------------------------------------------------------------
-      # 8. Open a Pull Request with the changes
-      # -----------------------------------------------------------------------
-      - name: Create Pull Request
-        if: steps.check.outputs.needed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: "auto-update/box32-${{ steps.release.outputs.tag }}"
-          commit-message: "pkgs/box32: update to ${{ steps.release.outputs.tag }} (${{ steps.release.outputs.commit }})"
-          title: "box32: ${{ steps.release.outputs.tag }}"
-          body: |
-            Automated update triggered by a new upstream box64 release.
+#       # -----------------------------------------------------------------------
+#       # 8. Open a Pull Request with the changes
+#       # -----------------------------------------------------------------------
+#       - name: Create Pull Request
+#         if: steps.check.outputs.needed == 'true'
+#         uses: peter-evans/create-pull-request@v6
+#         with:
+#           token: ${{ secrets.GITHUB_TOKEN }}
+#           branch: "auto-update/box32-${{ steps.release.outputs.tag }}"
+#           commit-message: "pkgs/box32: update to ${{ steps.release.outputs.tag }} (${{ steps.release.outputs.commit }})"
+#           title: "box32: ${{ steps.release.outputs.tag }}"
+#           body: |
+#             Automated update triggered by a new upstream box64 release.
 
-            - **Tag:** `${{ steps.release.outputs.tag }}`
-            - **Commit:** `${{ steps.release.outputs.commit }}`
-            - **Previous commit:** `${{ steps.check.outputs.current }}`
+#             - **Tag:** `${{ steps.release.outputs.tag }}`
+#             - **Commit:** `${{ steps.release.outputs.commit }}`
+#             - **Previous commit:** `${{ steps.check.outputs.current }}`
 
-            Please review the [upstream changelog](https://github.com/ptitSeb/box64/releases/tag/${{ steps.release.outputs.tag }}) before merging.
-          labels: "automated,dependencies"
-          delete-branch: true
+#             Please review the [upstream changelog](https://github.com/ptitSeb/box64/releases/tag/${{ steps.release.outputs.tag }}) before merging.
+#           labels: "automated,dependencies"
+#           delete-branch: true
