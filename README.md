@@ -7,7 +7,7 @@ It provides its own `box64-bleeding-edge` package, with the bleeding edge change
 
 ## Installation with flakes and Usage
 
-Here's a minimal `flake.nix` demonstrating how to include the `nixos-box64-binfmt` module and its x86_64 package overlay:
+Here's a minimal `flake.nix` demonstrating how to include the `nixos-box64-binfmt` module:
 
 ```nix
 # flake.nix
@@ -37,13 +37,6 @@ Here's a minimal `flake.nix` demonstrating how to include the `nixos-box64-binfm
 
         ./configuration.nix 
       ];
-      pkgs = import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
-        overlays = [
-          inputs.box64-binfmt.overlays.default  # Adds pkgs.x86
-        ];
-      };
     };
   };
 }
@@ -83,14 +76,14 @@ Then you may start installing x86 packages, note that hardware acceleration hasn
     inputs.box64-binfmt.nixosModules.default
   ];
 
-  boot.binfmt.emulatedSystems = ["i686-linux" "x86_64-linux" "i386-linux" "i486-linux" "i586-linux" "i686-linux"];
-  nix.settings.extra-platforms = ["i686-linux" "x86_64-linux" "i386-linux" "i486-linux" "i586-linux" "i686-linux"];
   box64-binfmt.enable = true; # Enable 
+  
+  # Install steam and steamcmd, steamcmd works, steam doesn't
+  box64-binfmt.steam.enable = true;
 
   environment.systemPackages = [
-    pkgs.x86.steamcmd          # SteamCMD for x86_64
+    pkgs.x86.vectoroids             # Standard packages work natively out of the box!
     pkgs.x86.wineWowPackages.stable # WINE (WoW64 version)
-    pkgs.x86.katawa-shoujo
     
     pkgs.htop                  # Native packages work as usual
 
@@ -103,4 +96,3 @@ Then you may start installing x86 packages, note that hardware acceleration hasn
 #### Todo
 - GitHub action to auto update box64 according to the latest commits?
 - Proper README
-- `steam` is still not launching, see [this issue](https://github.com/ptitSeb/box64/issues/2478) to track it
