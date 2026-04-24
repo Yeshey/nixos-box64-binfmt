@@ -14,11 +14,18 @@ let
     libGL libGLU vulkan-loader wayland
     xorg.libX11 xorg.libXext xorg.libXrandr xorg.libXrender xorg.libxcb 
     xorg.libXfixes xorg.libXcomposite xorg.libXcursor xorg.libXdamage xorg.libXi
+    xorg.libXinerama xorg.libXScrnSaver xorg.libSM xorg.libICE
     fontconfig freetype
+    libdrm libvdpau libvorbis libogg
+    gtk2 gtk3 glib dbus util-linux
   ];
 
   box64Wrapper = pkgs.writeShellScript "box64-wrapper" ''
-    export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeBox64Libs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export BOX64_LD_LIBRARY_PATH="${lib.makeLibraryPath nativeBox64Libs}''${BOX64_LD_LIBRARY_PATH:+:$BOX64_LD_LIBRARY_PATH}"
+    
+    # Force software rendering for GL contexts since you have no hardware acceleration
+    export LIBGL_ALWAYS_SOFTWARE=1
+    
     exec ${box32}/bin/box64 "$@"
   '';
 
@@ -39,7 +46,6 @@ in
     boot.binfmt.registrations = {
       # 64-bit x86 ELF
       "x86_64-linux" = {
-        # Point the kernel to our wrapper script instead of the raw box64 binary
         interpreter            = "${box64Wrapper}";
         magicOrExtension       = ''\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00'';
         mask                   = ''\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'';
